@@ -1,0 +1,11 @@
+
+ServerName 127.0.0.1
+
+LoadModule ssl_module libexec/apache24/mod_ssl.so
+
+Listen 443
+<VirtualHost *:443>
+  SSLEngine on
+  SSLCertificateFile      server.crt
+  SSLCertificateKeyFile   server.key
+</VirtualHost>
