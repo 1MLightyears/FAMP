@@ -1,5 +1,11 @@
 #!/bin/sh
 
+# Instructions on how to use this script 
+
+# chmod +x SCRIPTNAME.sh
+
+# sudo ./SCRIPTNAME.sh
+
 # Install Wordpress on FreeBSD after having used the following scripts:
 # event-php-fpm.sh
 # apache-hardening.sh
@@ -26,8 +32,50 @@ expect eof
 
 echo "$NEW_DATABASE"
 
-# Install the missing PHP packages
-pkg install -y php73-bz2 php73-curl php73-gd php73-mbstring php73-pecl-mcrypt php73-openssl php73-pdo_mysql php73-zip php73-zlib
+# Install PHP packages for Wordpress
+pkg install -y	php74\
+		php74-bcmath\
+		php74-bz2\
+		php74-ctype\
+		php74-curl\
+		php74-dom\
+		php74-exif\
+		php74-extensions\
+		php74-fileinfo\
+		php74-filter\
+		php74-ftp\
+		php74-gd\
+		php74-iconv\
+		php74-intl\
+		php74-json\
+		php74-mbstring\
+		php74-mysqli\
+		php74-opcache\
+		php74-openssl\
+		php74-pdo\
+		php74-pdo_mysql\
+		php74-pdo_sqlite\
+		php74-pecl-mcrypt\
+		php74-phar\
+		php74-posix\
+		php74-session\
+		php74-simplexml\
+		php74-soap\
+		php74-sockets\
+		php74-sqlite3\
+		php74-tokenizer\
+		php74-xml\
+		php74-xmlreader\
+		php74-xmlrpc\
+		php74-xmlwriter\
+		php74-zip\
+		php74-zlib
+
+# Load the new PHP modules
+service php-fpm restart
+
+# Reload PHP-FPM so it acknowledges the recently installed PHP packages
+service php-fpm reload
 
 # Because Wordpress and plugins will make use of an .htaccess file, let's enable it.
 sed -i -e "278s/AllowOverride None/AllowOverride All/" /usr/local/etc/apache24/httpd.conf

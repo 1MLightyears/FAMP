@@ -1,5 +1,26 @@
 #!/bin/sh
 
+# Instructions on how to use this script 
+
+# chmod +x SCRIPTNAME.sh
+
+# sudo ./SCRIPTNAME.sh
+
+###########################################################################################################
+###########################################  WARNING !!!  #################################################
+###########################################################################################################
+
+# Use this script at your own discretion. It modifies important bits of your Apache HTTP configuration
+# For example it changes:
+# 1.- Information provided by your server
+# 2.- It installs a self-signed certificate (modify this at your own will)
+# 3.- If, of course, enables SSL/TLS connections
+# 4.- Configures HTTP headers to be secure in a strict fashion. This may break some of your desired features. Adjust accordingly.
+# 5.- Disables the TRACE method
+# 6.- Explicitely and exclusively allows the GET, POST and HEAD methods
+# 7.- It installs the Mod_Evasive module in Apache HTTP to help mitigate DoS attacks
+# 8.- It installs the Mod_Security module in Apache HTTP as a Web Application Firewall (WAF) setup with the default rules. Adjust to your needs.
+
 # Install GNU sed to circumvent some of the syntax challenges the BSD sed has
 # such as inserting a line of text in a specific location needing a new line, etc.
 pkg install -y gsed
@@ -82,16 +103,26 @@ gsed -i '183i\RewriteRule ^/?(.*) https://%{SERVER_NAME}/$1 [R,L]' /usr/local/et
 # echo 'RewriteRule ^/?(.*) https://%{SERVER_NAME}/$1 [R,L]' /usr/local/etc/apache24/httpd.conf
 
 # 5.- Secure headers
-echo '<IfModule mod_headers.c>' >> /usr/local/etc/apache24/httpd.conf
-echo '  Header set Content-Security-Policy "upgrade-insecure-requests;"' >> /usr/local/etc/apache24/httpd.conf
-echo '  Header set Strict-Transport-Security "max-age=31536000; includeSubDomains"' >> /usr/local/etc/apache24/httpd.conf
-echo '  Header always edit Set-Cookie (.*) "$1; HttpOnly; Secure"' >> /usr/local/etc/apache24/httpd.conf
-echo '  Header set X-Content-Type-Options "nosniff"' >> /usr/local/etc/apache24/httpd.conf
-echo '  Header set X-XSS-Protection "1; mode=block"' >> /usr/local/etc/apache24/httpd.conf
-echo '  Header set Referrer-Policy "strict-origin"' >> /usr/local/etc/apache24/httpd.conf
-echo '  Header set X-Frame-Options: "deny"' >> /usr/local/etc/apache24/httpd.conf
-echo ' SetEnv modHeadersAvailable true' >> /usr/local/etc/apache24/httpd.conf
-echo '</IfModule>' >> /usr/local/etc/apache24/httpd.conf
+echo "
+<IfModule mod_headers.c>
+        # Add security and privacy related headers
+        Header set Content-Security-Policy "upgrade-insecure-requests;"
+        Header always edit Set-Cookie (.*) "$1; HttpOnly; Secure"
+        Header set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        Header set X-Content-Type-Options "nosniff"
+        Header set X-XSS-Protection "1; mode=block"
+        Header set X-Robots-Tag "all"
+        Header set X-Download-Options "noopen"
+        Header set X-Permitted-Cross-Domain-Policies "none"
+        Header always set Referrer-Policy: "strict-origin"
+        Header set X-Frame-Options: "deny"
+        Header set Permissions-Policy: "accelerometer=(none); ambient-light-sensor=(none); autoplay=(none); battery=(none); display-capture=(none); document-domain=(none); encrypted-media=(self); execution-while-not-rendered=(none); execution-while-out-of-viewport=(none); geolocation=(none); gyroscope=(none); layout-animations=(none); legacy-image-formats=(self); magnometer=(none); midi=(none); camera=(none); notifications=(none); microphone=(none); speaker=(none); oversized-images=(self); payment=(none); picture-in-picture=(none); publickey-credentials-get=(none); sync-xhr=(none); usb=(none); vr=(none); wake-lock=(none); screen-wake-lock=(none); web-share=(none); xr-partial-tracking=(none)"
+        SetEnv modHeadersAvailable true
+</IfModule>" >>  /usr/local/etc/apache24/Includes/headers.conf
+
+echo " 
+Include /usr/local/etc/apache24/Includes/headers.conf
+" >> /usr/local/etc/apache24/httpd.conf
 
 # 6.- Disable the TRACE method.
 echo 'TraceEnable off' >> /usr/local/etc/apache24/httpd.conf
@@ -108,7 +139,7 @@ service apache24 restart
 pkg install -y ap24-mod_evasive
 
 # 9.1- Enable the mod_evasive module in Apache HTTP
-sed -i -e '/mod_evasive20.so/#LoadModule/LoadModule/' /usr/local/etc/apache24/httpd.conf
+sed -i -e '/mod_evasive20.so/s/#LoadModule/LoadModule/' /usr/local/etc/apache24/httpd.conf
 
 # 9.2- Configure the mod_evasive module
 touch /usr/local/etc/apache24/modules.d/020-mod_evasive.conf
@@ -121,8 +152,8 @@ echo "<IfModule mod_evasive20.c>
 	DOSSiteInterval 1
 	DOSBlockingPeriod 360
 	DOSEmailNotify youremail@address.com
-	DOSSystemCommand “su – root -c /sbin/ipfw add 50000 deny %s to any in”
-	DOSLogDir “/var/log/mod_evasive”
+	DOSSystemCommand "su – root -c /sbin/ipfw add 50000 deny %s to any in"
+	DOSLogDir "/var/log/mod_evasive"
 </IfModule>" >> /usr/local/etc/apache24/modules.d/020-mod_evasive.conf
 
 # 9.4- Restart Apache for the configuration to take effect
@@ -131,20 +162,35 @@ apachectl graceful
 # 10.- Install Modsecurity 3 for Apache HTTP
 pkg install -y modsecurity3-apache
 
-# Clonde with Git SpiderLab Rules >> OWASP ModSecurity Core Rule Set
+# Download Git SpiderLab Rules >> OWASP ModSecurity Core Rule Set
 pkg install -y git
-git clone https://github.com/SpiderLabs/owasp-modsecurity-crs
-cp /usr/local/etc/modsecurity/owasp-modsecurity-crs/crs-setup.conf.example /usr/local/etc/modsecurity/crs-setup.conf
+git clone https://github.com/coreruleset/coreruleset /usr/local/etc/modsecurity/coreruleset/
+cp /usr/local/etc/modsecurity/coreruleset/crs-setup.conf.example /usr/local/etc/modsecurity/coreruleset/crs-setup.conf
+sed -ip 's/SecRuleEngine DetectionOnly/SecRuleEngine On/g' /usr/local/etc/modsecurity/modsecurity.conf
 
-# Configure ModSecurity3's module
-touch /usr/local/etc/apache24/modules.d/280_mod_security.conf
-echo '<IfModule security3_module>' >> /usr/local/etc/apache24/modules.d/280_mod_security.conf
-echo '	modsecurity on' >> /usr/local/etc/apache24/modules.d/280_mod_security.conf
-echo '	modsecurity_rules_file /usr/local/etc/modsecurity/crs-setup.conf' >> /usr/local/etc/apache24/modules.d/280_mod_security.conf
-echo '</IfModule>' >> /usr/local/etc/apache24/modules.d/280_mod_security.conf 
+# Set the configuration files for ModSecurity 3 to work
+touch /usr/local/etc/apache24/modsecurity-rules.conf
+
+echo "
+Include /usr/local/etc/modsecurity/modsecurity.conf
+Include /usr/local/etc/modsecurity/coreruleset/crs-setup.conf
+Include /usr/local/etc/modsecurity/coreruleset/rules/*.conf
+" >> /usr/local/etc/apache24/modsecurity-rules.conf
+
+# Enable ModSecurity's 3 module
+echo "
+modsecurity on
+modsecurity_rules_file /usr/local/etc/apache24/modsecurity-rules.conf
+" >> /usr/local/etc/apache24/httpd.conf
+
+# Rename 2 config files
+mv /usr/local/etc/modsecurity/coreruleset/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf.example /usr/local/etc/modsecurity/coreruleset/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+
+mv /usr/local/etc/modsecurity/coreruleset/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf.example /usr/local/etc/modsecurity/coreruleset/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf
 
 # Restart Apache HTTP
 apachectl restart
 
 ## References:
 ## https://www.adminbyaccident.com/security/how-to-harden-apache-http/
+## https://www.digitalocean.com/community/tutorials/recommended-steps-to-harden-apache-http-on-freebsd-12-0

@@ -1,5 +1,11 @@
 #!/bin/sh
 
+# Instructions on how to use this script 
+
+# chmod +x SCRIPTNAME.sh
+
+# sudo ./SCRIPTNAME.sh
+
 # Change the default pkg repository from quarterly to latest
 sed -ip 's/quarterly/latest/g' /etc/pkg/FreeBSD.conf
 
@@ -19,8 +25,8 @@ pkg install -y mysql80-server
 # Add service to be fired up at boot time
 sysrc mysql_enable="YES"
 
-# Install PHP 7.3 and its 'funny' dependencies
-pkg install -y php73 php73-mysqli php73-extensions
+# Install PHP 7.4 and its 'funny' dependencies
+pkg install -y php74 php74-mysqli php74-extensions
 
 # Install the 'old fashioned' Expect to automate the mysql_secure_installation part
 pkg install -y expect
@@ -48,17 +54,28 @@ sysrc php_fpm_enable="YES"
 touch /usr/local/etc/apache24/modules.d/003_php-fpm.conf
 
 # Add the configuration into the file
-echo '<IfModule proxy_fcgi_module>' >> /usr/local/etc/apache24/modules.d/003_php-fpm.conf
-echo '   <IfModule dir_module>' >> /usr/local/etc/apache24/modules.d/003_php-fpm.conf
-echo '   	DirectoryIndex index.php' >> /usr/local/etc/apache24/modules.d/003_php-fpm.conf
-echo '   </IfModule>' >> /usr/local/etc/apache24/modules.d/003_php-fpm.conf
-echo '   <FilesMatch "\.(php|phtml|inc)$">' >> /usr/local/etc/apache24/modules.d/003_php-fpm.conf
-echo '    	SetHandler "proxy:fcgi://127.0.0.1:9000"' >> /usr/local/etc/apache24/modules.d/003_php-fpm.conf
-echo '   </FilesMatch>' >> /usr/local/etc/apache24/modules.d/003_php-fpm.conf
-echo '</IfModule>' >> /usr/local/etc/apache24/modules.d/003_php-fpm.conf
+echo "
+<IfModule proxy_fcgi_module>
+    <IfModule dir_module>
+        DirectoryIndex index.php
+    </IfModule>
+    <FilesMatch \"\.(php)$\">
+        SetHandler proxy:unix:/tmp/php-fpm.sock|fcgi://localhost/
+    </FilesMatch>
+</IfModule>" >> /usr/local/etc/apache24/modules.d/003_php-fpm.conf
 
 # Set the PHP's default configuration
 cp /usr/local/etc/php.ini-production /usr/local/etc/php.ini
+
+# Install GNU Sed
+pkg install -y gsed
+
+# Configure PHP-FPM to use a UNIX socket instead of a TCP one
+# This configuration is better for standalone boxes
+gsed -i 's/127.0.0.1:9000/\/tmp\/php-fpm.sock/g' /usr/local/etc/php-fpm.d/www.conf
+gsed -i 's/;listen.owner/listen.owner/g' /usr/local/etc/php-fpm.d/www.conf
+gsed -i 's/;listen.group/listen.group/g' /usr/local/etc/php-fpm.d/www.conf
+
 
 # Fire up the services
 service apache24 start
@@ -98,3 +115,4 @@ echo "$SECURE_MYSQL"
 
 ## https://www.digitalocean.com/community/tutorials/how-to-configure-apache-http-with-mpm-event-and-php-fpm-on-freebsd-12-0
 ## https://www.adminbyaccident.com/freebsd/how-to-freebsd/how-to-set-apaches-mpm-event-and-php-fpm-on-freebsd/
+## https://cwiki.apache.org/confluence/display/HTTPD/PHP-FPM
